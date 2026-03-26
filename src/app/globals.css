@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-bg-000: hsl(0 0% 100%);
+  --color-bg-100: hsl(48 33.3% 97.1%);
+  --color-bg-200: hsl(53 28.6% 94.5%);
+  --color-bg-300: hsl(48 25% 92.2%);
+  --color-bg-400: hsl(50 20.7% 88.6%);
+  --color-text-100: hsl(60 2.6% 7.6%);
+  --color-text-400: hsl(51 3.1% 43.7%);
+  --color-text-500: hsl(51 3.1% 43.7%);
+  --color-border-300: hsl(30 3.3% 11.8%);
+  --color-accent-brand: hsl(15 63.1% 59.6%);
+  --font-ui: system-ui, -apple-system, sans-serif;
+  --font-serif: var(--font-garamond), var(--font-noto-serif), serif;
+}
+
+body {
+  background: var(--color-bg-100);
+  color: var(--color-text-100);
+  font-family: var(--font-ui);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .greeting-transition {
+    transition: none !important;
+  }
+}

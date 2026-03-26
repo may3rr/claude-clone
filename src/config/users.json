@@ -1,0 +1,12 @@
+{
+  "users": [
+    { "shortname": "lm", "displayName": "李淼" },
+    { "shortname": "lhn", "displayName": "赖慧楠" },
+    { "shortname": "smy", "displayName": "孙蜜遥" },
+    { "shortname": "xlhh", "displayName": "徐刘淏华" },
+    { "shortname": "ly", "displayName": "刘洋" },
+    { "shortname": "srwy", "displayName": "孙瑞雯烨" },
+    { "shortname": "ceshi", "displayName": "测试用户" },
+    { "shortname": "jklroot0", "displayName": "Root" }
+  ]
+}
