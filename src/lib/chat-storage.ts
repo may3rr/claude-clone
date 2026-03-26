@@ -59,11 +59,19 @@ export async function loadSessionFromServer(id: string): Promise<ChatSession | n
   }
 }
 
-// Initialize cache from server
+// Initialize cache from server, fallback to localStorage
 export async function initSessionsCache() {
   if (cacheLoaded) return;
   const sessions = await loadSessionsFromServer();
-  cachedSessions = sessions;
+
+  if (sessions.length > 0) {
+    cachedSessions = sessions;
+  } else if (typeof window !== 'undefined') {
+    // Fallback: load from localStorage if server returned nothing
+    const raw = localStorage.getItem('chat_sessions');
+    cachedSessions = normalizeSessions(raw);
+  }
+
   cacheLoaded = true;
   notifySessionsUpdated();
 }
@@ -77,10 +85,28 @@ export async function migrateLocalStorageToServer() {
   const localSessions = normalizeSessions(raw);
   if (localSessions.length === 0) return;
 
-  // Upload each local session to server
+  // Check if we're actually authenticated first
+  try {
+    const authCheck = await fetch('/api/auth/me');
+    if (!authCheck.ok) {
+      // Not authenticated — keep localStorage intact, load from it
+      cachedSessions = localSessions;
+      cacheLoaded = true;
+      notifySessionsUpdated();
+      return;
+    }
+  } catch {
+    cachedSessions = localSessions;
+    cacheLoaded = true;
+    notifySessionsUpdated();
+    return;
+  }
+
+  // Upload each local session to server, track success
+  let allSucceeded = true;
   for (const session of localSessions) {
     try {
-      await fetch(`/api/sessions/${session.id}/messages`, {
+      const res = await fetch(`/api/sessions/${session.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -88,13 +114,16 @@ export async function migrateLocalStorageToServer() {
           title: session.title,
         }),
       });
+      if (!res.ok) allSucceeded = false;
     } catch {
-      // ignore individual failures
+      allSucceeded = false;
     }
   }
 
-  // Clear localStorage after successful migration
-  localStorage.removeItem('chat_sessions');
+  // Only clear localStorage if ALL uploads succeeded
+  if (allSucceeded) {
+    localStorage.removeItem('chat_sessions');
+  }
 
   // Refresh cache
   cacheLoaded = false;
