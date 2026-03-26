@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { MenuIcon } from '@/components/icons';
 import Sidebar from '@/components/sidebar/Sidebar';
+import { migrateLocalStorageToServer, initSessionsCache } from '@/lib/chat-storage';
 
 const SIDEBAR_STATE_KEY = 'claude_sidebar_collapsed';
 const EXPANDED_SIDEBAR_WIDTH = 288;
@@ -23,6 +24,19 @@ export default function AppShell({
     return localStorage.getItem(SIDEBAR_STATE_KEY) === '1';
   });
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Initialize sessions from server (or localStorage fallback)
+  useEffect(() => {
+    const user = localStorage.getItem('user');
+    if (!user) return;
+
+    async function init() {
+      await migrateLocalStorageToServer();
+      await initSessionsCache();
+    }
+
+    void init();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_STATE_KEY, isSidebarCollapsed ? '1' : '0');
