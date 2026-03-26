@@ -173,7 +173,7 @@ export function buildTitlePrompt(message: Pick<ChatMessage, 'content'>) {
   const textLine = text ? `内容：${text}` : '';
 
   return [
-    '请用最多5个字为以下对话生成一个简洁的标题，只返回标题，不要其他内容。',
+    '请为以下对话生成一个简洁的标题，只返回标题，不要其他内容。',
     attachmentLine,
     textLine,
   ]

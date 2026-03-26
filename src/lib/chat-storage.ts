@@ -153,8 +153,6 @@ export function getSession(id: string): ChatSession | null {
 
 export function saveSession(session: ChatSession) {
   const idx = cachedSessions.findIndex(s => s.id === session.id);
-  const shouldNotify =
-    idx < 0 || cachedSessions[idx]?.title !== session.title;
 
   if (idx >= 0) {
     cachedSessions[idx] = session;
@@ -162,9 +160,9 @@ export function saveSession(session: ChatSession) {
     cachedSessions.unshift(session);
   }
 
-  if (shouldNotify) {
-    notifySessionsUpdated();
-  }
+  // Always notify — title or messages may have changed,
+  // and reference equality makes old comparison unreliable
+  notifySessionsUpdated();
 
   // Sync to server
   syncSessionToServer(session);
