@@ -3,6 +3,7 @@ import { EB_Garamond, Noto_Serif_SC } from 'next/font/google';
 import './globals.css';
 import AppShell from '@/components/layout/AppShell';
 import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 const ebGaramond = EB_Garamond({
   subsets: ['latin'],
@@ -34,6 +35,7 @@ export default function RootLayout({
           {children}
         </AppShell>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
