@@ -4,14 +4,12 @@ import { getUserFromRequest } from '@/lib/jwt';
 export async function POST(req: Request) {
   try {
     const jwtUser = await getUserFromRequest(req);
-    const { user: bodyUser, messages, model, stream = true } = await req.json();
-
-    // Prefer JWT auth, fall back to body user for backward compat
-    const userShortname = jwtUser?.shortname ?? bodyUser;
-
-    if (!userShortname) {
+    if (!jwtUser) {
       return new Response('Unauthorized', { status: 401 });
     }
+
+    const { messages, model, stream = true } = await req.json();
+    const userShortname = jwtUser.shortname;
 
     const apiKey = getApiKeyForUser(userShortname);
     if (!apiKey) {

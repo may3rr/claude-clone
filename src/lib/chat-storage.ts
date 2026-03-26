@@ -195,7 +195,7 @@ export function renameSession(id: string, title: string) {
 
 export function createNewSession(): ChatSession {
   return {
-    id: Date.now().toString(),
+    id: `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
     title: 'New chat',
     messages: [],
     createdAt: new Date().toISOString(),

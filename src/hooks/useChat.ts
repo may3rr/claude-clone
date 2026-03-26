@@ -147,7 +147,6 @@ export function useChat({ sessionId }: UseChatOptions) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        user: localStorage.getItem('user'),
         messages: hydratedMessages,
         model,
         stream,

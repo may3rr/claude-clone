@@ -138,6 +138,16 @@ export default function ChatInput({
     onClearError?.();
   }
 
+  function cleanupRejectedAttachments(
+    nextAttachments: ComposerAttachment[],
+    message: string
+  ) {
+    setLocalError(message);
+    for (const attachment of nextAttachments) {
+      revokePreviewUrl(attachment.previewUrl);
+    }
+  }
+
   function clearComposer() {
     setValue('');
     setAttachments((current) => {
@@ -182,30 +192,22 @@ export default function ChatInput({
 
     for (const file of files) {
       if (!ACCEPTED_FILE_TYPES.includes(file.type)) {
-        setLocalError('只支持 PDF、PNG、JPG、WEBP、GIF');
-        for (const attachment of nextAttachments) {
-          revokePreviewUrl(attachment.previewUrl);
-        }
+        cleanupRejectedAttachments(nextAttachments, '只支持 PDF、PNG、JPG、WEBP、GIF');
         return;
       }
 
       const kind = getAttachmentKind(file);
       if (!kind) {
-        setLocalError('暂不支持该文件类型');
-        for (const attachment of nextAttachments) {
-          revokePreviewUrl(attachment.previewUrl);
-        }
+        cleanupRejectedAttachments(nextAttachments, '暂不支持该文件类型');
         return;
       }
 
       nextTotalBytes += file.size;
       if (nextTotalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
-        setLocalError(
+        cleanupRejectedAttachments(
+          nextAttachments,
           `附件总大小不能超过 ${formatFileSize(MAX_TOTAL_ATTACHMENT_BYTES)}`
         );
-        for (const attachment of nextAttachments) {
-          revokePreviewUrl(attachment.previewUrl);
-        }
         return;
       }
 

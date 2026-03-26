@@ -14,16 +14,13 @@ function getDashboardBaseUrl() {
 
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    // Prefer JWT auth, fall back to query param
     const jwtUser = await getUserFromRequest(req);
-    const userShortname = jwtUser?.shortname ?? searchParams.get('user')?.trim().toLowerCase();
-
-    if (!userShortname) {
-      return Response.json({ error: 'Missing user' }, { status: 400 });
+    if (!jwtUser) {
+      return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const displayName = jwtUser?.displayName ?? userShortname;
+    const userShortname = jwtUser.shortname;
+    const displayName = jwtUser.displayName;
 
     const apiKey = getApiKeyForUser(userShortname);
     if (!apiKey) {

@@ -33,17 +33,17 @@ function getIndexedDb() {
   return dbPromise;
 }
 
-function withStore<T>(
+function withStore(
   mode: IDBTransactionMode,
   callback: (store: IDBObjectStore) => void
 ) {
-  return new Promise<T>((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     void getIndexedDb()
       .then((db) => {
         const transaction = db.transaction(STORE_NAME, mode);
         const store = transaction.objectStore(STORE_NAME);
 
-        transaction.oncomplete = () => resolve(undefined as T);
+        transaction.oncomplete = () => resolve();
         transaction.onerror = () =>
           reject(transaction.error ?? new Error('附件数据库操作失败'));
         transaction.onabort = () =>
@@ -104,7 +104,7 @@ export async function saveComposerAttachment(params: {
     createdAt: new Date().toISOString(),
   };
 
-  await withStore<void>('readwrite', (store) => {
+  await withStore('readwrite', (store) => {
     store.put(record);
   });
 
@@ -144,7 +144,7 @@ export async function getStoredAttachmentDataUrl(id: string) {
 }
 
 export function deleteAttachment(id: string) {
-  return withStore<void>('readwrite', (store) => {
+  return withStore('readwrite', (store) => {
     store.delete(id);
   });
 }
@@ -154,7 +154,7 @@ export async function deleteAttachments(ids: string[]) {
     return;
   }
 
-  await withStore<void>('readwrite', (store) => {
+  await withStore('readwrite', (store) => {
     for (const id of ids) {
       store.delete(id);
     }
@@ -162,7 +162,7 @@ export async function deleteAttachments(ids: string[]) {
 }
 
 export async function deleteAttachmentsForSession(sessionId: string) {
-  await withStore<void>('readwrite', (store) => {
+  await withStore('readwrite', (store) => {
     const index = store.index('sessionId');
     const request = index.openCursor(IDBKeyRange.only(sessionId));
 

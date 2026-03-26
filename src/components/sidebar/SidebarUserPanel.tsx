@@ -15,6 +15,15 @@ function formatCny(value: number) {
   return `¥${Math.max(value, 0).toFixed(2)}`;
 }
 
+function readStoredUserValue(key: string) {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const value = localStorage.getItem(key)?.trim();
+  return value ? value : null;
+}
+
 export default function SidebarUserPanel({ collapsed = false }: { collapsed?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,8 +46,8 @@ export default function SidebarUserPanel({ collapsed = false }: { collapsed?: bo
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setUserShortname(localStorage.getItem('user'));
-    setDisplayName(localStorage.getItem('user_display_name'));
+    setUserShortname(readStoredUserValue('user'));
+    setDisplayName(readStoredUserValue('user_display_name'));
   }, [pathname]);
 
   // Close menu on outside click
@@ -67,12 +76,9 @@ export default function SidebarUserPanel({ collapsed = false }: { collapsed?: bo
       setLoadError(null);
 
       try {
-        const response = await fetch(
-          `/api/billing/summary?user=${encodeURIComponent(userShortname)}`,
-          {
-            cache: 'no-store',
-          }
-        );
+        const response = await fetch('/api/billing/summary', {
+          cache: 'no-store',
+        });
 
         if (!response.ok) {
           throw new Error(`Billing summary error: ${response.status}`);

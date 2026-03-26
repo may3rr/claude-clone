@@ -2,7 +2,7 @@
  * 初始化数据库：创建表 + 插入默认用户
  *
  * 用法：node scripts/init-db.mjs
- * 需要 DATABASE_URL 环境变量（可从 .env.local 读取）
+ * 需要 DATABASE_URL 和 INIT_DB_DEFAULT_PASSWORD 环境变量（可从 .env.local 读取）
  */
 
 import { neon } from '@neondatabase/serverless';
@@ -30,8 +30,14 @@ for (const line of envContent.split('\n')) {
 
 const sql = neon(process.env.DATABASE_URL);
 
-const DEFAULT_PASSWORD = 'REDACTED_PASSWORD';
-const passwordHash = hashSync(DEFAULT_PASSWORD, 10);
+const DEFAULT_PASSWORD_ENV = 'INIT_DB_DEFAULT_PASSWORD';
+const defaultPassword = process.env[DEFAULT_PASSWORD_ENV];
+
+if (!defaultPassword) {
+  throw new Error(`${DEFAULT_PASSWORD_ENV} is required`);
+}
+
+const passwordHash = hashSync(defaultPassword, 10);
 
 const users = [
   { shortname: 'lm', displayName: '李淼', role: 'user' },
@@ -100,7 +106,7 @@ async function main() {
     console.log(`  ✓ ${user.shortname} (${user.displayName})`);
   }
 
-  console.log('\nDone! Default password for all users: ' + DEFAULT_PASSWORD);
+  console.log(`\nDone! Default password was read from ${DEFAULT_PASSWORD_ENV}.`);
 }
 
 main().catch((err) => {
