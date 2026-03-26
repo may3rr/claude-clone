@@ -6,9 +6,11 @@
 
 ## 界面预览
 
-| 桌面端 | 移动端 |
-|:------:|:------:|
-| ![桌面端首页](img/首页.png) | ![移动端首页](img/移动端首页.jpg) |
+### 桌面端
+<img src="img/首页.png" width="600" />
+
+### 移动端
+<img src="img/移动端首页.jpg" width="300" />
 
 ## 技术栈
 
@@ -71,9 +73,6 @@ npm run dev
 打开 http://localhost:3000，输入用户缩写登录。
 
 ## 部署到 Vercel
-
-**Vercel 项目地址**：[may3rrs-projects/claude-clone](https://vercel.com/may3rrs-projects/claude-clone)
-**线上地址**：https://ljcr.chat
 
 1. 将项目推送到 GitHub
 2. 在 [Vercel](https://vercel.com) 导入项目
