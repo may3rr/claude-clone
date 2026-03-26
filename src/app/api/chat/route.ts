@@ -1,20 +1,25 @@
-import { getApiKeyForUser, isValidUser } from '@/lib/auth';
+import { getApiKeyForUser } from '@/lib/auth';
+import { getUserFromRequest } from '@/lib/jwt';
 
 export async function POST(req: Request) {
   try {
-    const { user, messages, model, stream = true } = await req.json();
+    const jwtUser = await getUserFromRequest(req);
+    const { user: bodyUser, messages, model, stream = true } = await req.json();
 
-    if (!isValidUser(user)) {
+    // Prefer JWT auth, fall back to body user for backward compat
+    const userShortname = jwtUser?.shortname ?? bodyUser;
+
+    if (!userShortname) {
       return new Response('Unauthorized', { status: 401 });
     }
 
-    const apiKey = getApiKeyForUser(user);
+    const apiKey = getApiKeyForUser(userShortname);
     if (!apiKey) {
-      console.error(`[API] API Key not found for user: ${user}`);
+      console.error(`[API] API Key not found for user: ${userShortname}`);
       return new Response('API Key not found', { status: 500 });
     }
 
-    console.log(`[API] Calling gpt.ge for user ${user} with model ${model}`);
+    console.log(`[API] Calling gpt.ge for user ${userShortname} with model ${model}`);
 
     const response = await fetch(process.env.GPT_GE_API_URL!, {
       method: 'POST',

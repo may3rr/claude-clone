@@ -17,6 +17,7 @@ import {
 import {
   getSession,
   saveSession,
+  loadSessionFromServer,
 } from '@/lib/chat-storage';
 import {
   createUserMessageFromComposer,
@@ -80,9 +81,26 @@ export function useChat({ sessionId }: UseChatOptions) {
   const sessionRef = useRef<ChatSession | null>(null);
 
   useEffect(() => {
-    const s = getSession(sessionId);
-    sessionRef.current = s;
-    setSession(s);
+    // Try local cache first, then load full session from server
+    const cached = getSession(sessionId);
+    if (cached && cached.messages.length > 0) {
+      sessionRef.current = cached;
+      setSession(cached);
+    } else {
+      // Load from server (messages may not be in cache)
+      void loadSessionFromServer(sessionId).then((serverSession) => {
+        if (serverSession) {
+          sessionRef.current = serverSession;
+          setSession(serverSession);
+          // Update local cache
+          saveSession(serverSession);
+        } else if (cached) {
+          // Fallback to cached (new session with no messages yet)
+          sessionRef.current = cached;
+          setSession(cached);
+        }
+      });
+    }
   }, [sessionId]);
 
   useEffect(() => {

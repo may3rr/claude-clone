@@ -3,25 +3,110 @@ import { ChatSession, normalizeSessions } from '@/lib/chat-types';
 
 export type { ChatSession } from '@/lib/chat-types';
 
-const EMPTY_SESSIONS: ChatSession[] = [];
-let cachedSessionsRaw: string | null = null;
-let cachedSessions: ChatSession[] = EMPTY_SESSIONS;
+// --- Local cache backed by the server ---
+
+let cachedSessions: ChatSession[] = [];
+let cacheLoaded = false;
 
 function notifySessionsUpdated() {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event('chat-sessions-updated'));
 }
 
-export function getSessionsSnapshot(): ChatSession[] {
-  if (typeof window === 'undefined') return EMPTY_SESSIONS;
+// Sync session to server (fire-and-forget)
+function syncSessionToServer(session: ChatSession) {
+  void fetch(`/api/sessions/${session.id}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages: session.messages,
+      title: session.title,
+    }),
+  }).catch((err) => console.error('[sync] save failed:', err));
+}
 
-  const sessionsRaw = localStorage.getItem('chat_sessions');
-  if (sessionsRaw === cachedSessionsRaw) {
-    return cachedSessions;
+// Load sessions from server
+export async function loadSessionsFromServer(): Promise<ChatSession[]> {
+  try {
+    const res = await fetch('/api/sessions');
+    if (!res.ok) return [];
+    const rows = await res.json();
+    return rows.map((row: { id: string; title: string; created_at: string }) => ({
+      id: row.id,
+      title: row.title,
+      messages: [],
+      createdAt: row.created_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// Load a single session with messages from server
+export async function loadSessionFromServer(id: string): Promise<ChatSession | null> {
+  try {
+    const res = await fetch(`/api/sessions/${id}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      id: data.id,
+      title: data.title,
+      messages: data.messages || [],
+      createdAt: data.created_at,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Initialize cache from server
+export async function initSessionsCache() {
+  if (cacheLoaded) return;
+  const sessions = await loadSessionsFromServer();
+  cachedSessions = sessions;
+  cacheLoaded = true;
+  notifySessionsUpdated();
+}
+
+// Also try migrating from localStorage on first load
+export async function migrateLocalStorageToServer() {
+  if (typeof window === 'undefined') return;
+  const raw = localStorage.getItem('chat_sessions');
+  if (!raw) return;
+
+  const localSessions = normalizeSessions(raw);
+  if (localSessions.length === 0) return;
+
+  // Upload each local session to server
+  for (const session of localSessions) {
+    try {
+      await fetch(`/api/sessions/${session.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: session.messages,
+          title: session.title,
+        }),
+      });
+    } catch {
+      // ignore individual failures
+    }
   }
 
-  cachedSessionsRaw = sessionsRaw;
-  cachedSessions = normalizeSessions(sessionsRaw);
+  // Clear localStorage after successful migration
+  localStorage.removeItem('chat_sessions');
+
+  // Refresh cache
+  cacheLoaded = false;
+  await initSessionsCache();
+}
+
+// --- Public API (same interface as before) ---
+
+const EMPTY_SESSIONS: ChatSession[] = [];
+
+export function getSessionsSnapshot(): ChatSession[] {
+  if (typeof window === 'undefined') return EMPTY_SESSIONS;
   return cachedSessions;
 }
 
@@ -30,43 +115,54 @@ export function getServerSessionsSnapshot(): ChatSession[] {
 }
 
 export function getAllSessions(): ChatSession[] {
-  return [...getSessionsSnapshot()];
+  return [...cachedSessions];
 }
 
 export function getSession(id: string): ChatSession | null {
-  return getAllSessions().find(s => s.id === id) || null;
+  return cachedSessions.find(s => s.id === id) || null;
 }
 
 export function saveSession(session: ChatSession) {
-  const sessions = getAllSessions();
-  const idx = sessions.findIndex(s => s.id === session.id);
+  const idx = cachedSessions.findIndex(s => s.id === session.id);
   const shouldNotify =
-    idx < 0 || sessions[idx]?.title !== session.title;
+    idx < 0 || cachedSessions[idx]?.title !== session.title;
+
   if (idx >= 0) {
-    sessions[idx] = session;
+    cachedSessions[idx] = session;
   } else {
-    sessions.unshift(session);
+    cachedSessions.unshift(session);
   }
-  localStorage.setItem('chat_sessions', JSON.stringify(sessions));
+
   if (shouldNotify) {
     notifySessionsUpdated();
   }
+
+  // Sync to server
+  syncSessionToServer(session);
 }
 
 export function deleteSession(id: string) {
-  const sessions = getAllSessions().filter(s => s.id !== id);
-  localStorage.setItem('chat_sessions', JSON.stringify(sessions));
+  cachedSessions = cachedSessions.filter(s => s.id !== id);
   notifySessionsUpdated();
   void deleteAttachmentsForSession(id);
+
+  // Delete from server
+  void fetch(`/api/sessions/${id}`, { method: 'DELETE' })
+    .catch((err) => console.error('[sync] delete failed:', err));
 }
 
 export function renameSession(id: string, title: string) {
-  const sessions = getAllSessions();
-  const session = sessions.find(s => s.id === id);
+  const session = cachedSessions.find(s => s.id === id);
   if (session) {
     session.title = title;
-    localStorage.setItem('chat_sessions', JSON.stringify(sessions));
     notifySessionsUpdated();
+
+    // Sync rename to server
+    void fetch(`/api/sessions/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    }).catch((err) => console.error('[sync] rename failed:', err));
   }
 }
 

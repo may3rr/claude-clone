@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { isValidUser } from '@/lib/auth';
 
 export default function LoginPage() {
   const router = useRouter();
   const [shortname, setShortname] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -20,14 +20,37 @@ export default function LoginPage() {
       return;
     }
 
-    if (!isValidUser(input)) {
-      setError('未找到该用户，请检查缩写是否正确');
+    if (!password) {
+      setError('请输入密码');
       return;
     }
 
     setLoading(true);
-    localStorage.setItem('user', input);
-    router.push('/');
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shortname: input, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || '登录失败');
+        setLoading(false);
+        return;
+      }
+
+      // Store user info in localStorage for client-side display
+      localStorage.setItem('user', data.shortname);
+      localStorage.setItem('user_display_name', data.displayName);
+      localStorage.setItem('user_role', data.role);
+      router.push('/');
+    } catch {
+      setError('网络错误，请稍后重试');
+      setLoading(false);
+    }
   }
 
   return (
@@ -57,11 +80,20 @@ export default function LoginPage() {
             type="text"
             value={shortname}
             onChange={(e) => setShortname(e.target.value)}
-            placeholder="id: "
+            placeholder="id"
             className="w-full px-4 py-3 rounded-xl border border-border-300/20 bg-bg-000 text-text-100 placeholder:text-text-400 focus:outline-none focus:ring-1 focus:ring-border-300/30 text-center font-serif"
             autoFocus
-            autoComplete="off"
+            autoComplete="username"
             spellCheck={false}
+          />
+
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="密码"
+            className="w-full px-4 py-3 rounded-xl border border-border-300/20 bg-bg-000 text-text-100 placeholder:text-text-400 focus:outline-none focus:ring-1 focus:ring-border-300/30 text-center font-serif"
+            autoComplete="current-password"
           />
 
           {error && (
@@ -73,7 +105,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full py-3 rounded-xl bg-accent-brand text-white font-medium font-serif hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            {loading ? '跳转中...' : '开始使用'}
+            {loading ? '登录中...' : '登录'}
           </button>
         </form>
       </div>

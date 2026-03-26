@@ -1,6 +1,6 @@
 import { getApiKeyForUser } from '@/lib/auth';
 import { buildBillingSummary } from '@/lib/billing';
-import { getUserByShortname } from '@/lib/users';
+import { getUserFromRequest } from '@/lib/jwt';
 
 function getDashboardBaseUrl() {
   const configuredApiUrl = process.env.GPT_GE_API_URL;
@@ -15,16 +15,15 @@ function getDashboardBaseUrl() {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const userShortname = searchParams.get('user')?.trim().toLowerCase();
+    // Prefer JWT auth, fall back to query param
+    const jwtUser = await getUserFromRequest(req);
+    const userShortname = jwtUser?.shortname ?? searchParams.get('user')?.trim().toLowerCase();
 
     if (!userShortname) {
       return Response.json({ error: 'Missing user' }, { status: 400 });
     }
 
-    const user = getUserByShortname(userShortname);
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const displayName = jwtUser?.displayName ?? userShortname;
 
     const apiKey = getApiKeyForUser(userShortname);
     if (!apiKey) {
@@ -74,8 +73,8 @@ export async function GET(req: Request) {
 
     return Response.json(
       buildBillingSummary({
-        displayName: user.displayName,
-        shortname: user.shortname,
+        displayName,
+        shortname: userShortname,
         usage,
         subscription,
       })
