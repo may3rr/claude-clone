@@ -91,12 +91,11 @@ export async function POST(req: Request) {
     const apiBody = {
       model,
       messages,
-      tools: [WEB_SEARCH_TOOL],
       max_tokens: 8192,
       temperature: 1,
     };
 
-    // Non-streaming path — pass through as before (used by title generation)
+    // Non-streaming path is used by title generation, so don't expose web search.
     if (!stream) {
       const response = await fetch(process.env.GPT_GE_API_URL!, {
         method: 'POST',
@@ -119,7 +118,11 @@ export async function POST(req: Request) {
     const response = await fetch(process.env.GPT_GE_API_URL!, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ ...apiBody, stream: true }),
+      body: JSON.stringify({
+        ...apiBody,
+        tools: [WEB_SEARCH_TOOL],
+        stream: true,
+      }),
     });
 
     if (!response.ok) {
