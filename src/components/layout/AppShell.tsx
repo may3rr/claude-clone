@@ -96,7 +96,7 @@ export default function AppShell({
         </button>
       ) : null}
 
-      <main className="flex h-[100dvh] min-w-0 flex-1 flex-col transition-[padding] duration-300 md:pl-[var(--desktop-sidebar-width)]">
+      <main className="flex h-[100dvh] min-h-0 min-w-0 flex-1 flex-col transition-[padding] duration-300 md:pl-[var(--desktop-sidebar-width)]">
         {children}
       </main>
     </div>

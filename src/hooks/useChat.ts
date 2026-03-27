@@ -78,29 +78,33 @@ export function useChat({ sessionId }: UseChatOptions) {
   const [session, setSession] = useState<ChatSession | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<
+    Array<{ title: string; url: string; content: string }> | null
+  >(null);
   const sessionRef = useRef<ChatSession | null>(null);
 
   useEffect(() => {
-    // Try local cache first, then load full session from server
+    // Try local cache first — set immediately to avoid "Loading…" flash
     const cached = getSession(sessionId);
-    if (cached && cached.messages.length > 0) {
+    if (cached) {
       sessionRef.current = cached;
       setSession(cached);
-    } else {
-      // Load from server (messages may not be in cache)
-      void loadSessionFromServer(sessionId).then((serverSession) => {
-        if (serverSession) {
-          sessionRef.current = serverSession;
-          setSession(serverSession);
-          // Update local cache
-          saveSession(serverSession);
-        } else if (cached) {
-          // Fallback to cached (new session with no messages yet)
-          sessionRef.current = cached;
-          setSession(cached);
-        }
-      });
     }
+
+    if (cached && cached.messages.length > 0) {
+      // Has messages locally — no need to hit server
+      return;
+    }
+
+    // Load from server (new session or messages not in cache yet)
+    void loadSessionFromServer(sessionId).then((serverSession) => {
+      if (serverSession) {
+        sessionRef.current = serverSession;
+        setSession(serverSession);
+        saveSession(serverSession);
+      }
+    });
   }, [sessionId]);
 
   useEffect(() => {
@@ -192,7 +196,19 @@ export function useChat({ sessionId }: UseChatOptions) {
         if (payload === '[DONE]') continue;
 
         try {
-          const data = JSON.parse(payload);
+          const data = JSON.parse(payload) as {
+            type?: string;
+            query?: string;
+            results?: Array<{ title: string; url: string; content: string }>;
+          };
+          if (data.type === 'search_used' && data.query) {
+            setSearchQuery(data.query);
+            continue;
+          }
+          if (data.type === 'search_results' && data.results) {
+            setSearchResults(data.results);
+            continue;
+          }
           const chunk = extractChunkText(data);
           if (chunk) {
             assistantContent += chunk;
@@ -264,6 +280,8 @@ export function useChat({ sessionId }: UseChatOptions) {
     }
 
     clearError();
+    setSearchQuery(null);
+    setSearchResults(null);
     const baseSession = sessionRef.current;
     const updatedSession = {
       ...baseSession,
@@ -419,6 +437,8 @@ export function useChat({ sessionId }: UseChatOptions) {
     session,
     isLoading,
     errorMessage,
+    searchQuery,
+    searchResults,
     clearError,
     sendMessage,
     sendPreparedMessage,

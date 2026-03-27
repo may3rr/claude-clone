@@ -43,6 +43,7 @@ interface ChatInputProps {
   } | null;
   mode?: 'compose' | 'edit';
   onCancelEdit?: () => void;
+  sticky?: boolean;
 }
 
 function createAttachmentId() {
@@ -94,6 +95,7 @@ export default function ChatInput({
   draftSeed = null,
   mode = 'compose',
   onCancelEdit,
+  sticky = true,
 }: ChatInputProps) {
   const [value, setValue] = useState(() => draftSeed?.submission.text ?? '');
   const [attachments, setAttachments] = useState<ComposerAttachment[]>(
@@ -283,8 +285,12 @@ export default function ChatInput({
     appendFiles(Array.from(e.dataTransfer.files));
   }
 
+  const shellClassName = sticky
+    ? 'sticky bottom-0 z-10 pt-6 pb-6 bg-gradient-to-t from-bg-100 via-bg-100/95 to-transparent'
+    : 'z-10 pt-6 pb-6 bg-gradient-to-t from-bg-100 via-bg-100/95 to-transparent';
+
   return (
-    <div className="sticky bottom-0 z-10 pt-6 pb-6 bg-gradient-to-t from-bg-100 via-bg-100/95 to-transparent">
+    <div className={shellClassName}>
       <div className="max-w-3xl mx-auto px-4">
         <div
           className={`rounded-[20px] border bg-bg-000 shadow-[0_0.25rem_1.25rem_rgba(0,0,0,0.06)] transition-colors ${

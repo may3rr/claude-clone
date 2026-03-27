@@ -155,16 +155,12 @@ export function saveSession(session: ChatSession) {
   const idx = cachedSessions.findIndex(s => s.id === session.id);
 
   if (idx >= 0) {
-    cachedSessions[idx] = session;
+    cachedSessions = cachedSessions.map((s, i) => (i === idx ? session : s));
   } else {
-    cachedSessions.unshift(session);
+    cachedSessions = [session, ...cachedSessions];
   }
 
-  // Always notify — title or messages may have changed,
-  // and reference equality makes old comparison unreliable
   notifySessionsUpdated();
-
-  // Sync to server
   syncSessionToServer(session);
 }
 
@@ -181,7 +177,9 @@ export function deleteSession(id: string) {
 export function renameSession(id: string, title: string) {
   const session = cachedSessions.find(s => s.id === id);
   if (session) {
-    session.title = title;
+    cachedSessions = cachedSessions.map(s =>
+      s.id === id ? { ...s, title } : s
+    );
     notifySessionsUpdated();
 
     // Sync rename to server

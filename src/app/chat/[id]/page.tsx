@@ -14,6 +14,8 @@ import { buildComposerSubmissionFromMessage } from '@/lib/chat-message-utils';
 import { takePendingChatMessage } from '@/lib/pending-chat';
 
 export default function ChatPage() {
+  const autoScrollGuardThreshold = 160;
+  const manualScrollDebounceMs = 250;
   const params = useParams();
   const searchParams = useSearchParams();
   const sessionId = params.id as string;
@@ -21,6 +23,8 @@ export default function ChatPage() {
     session,
     isLoading,
     errorMessage,
+    searchQuery,
+    searchResults,
     clearError,
     sendMessage,
     sendPreparedMessage,
@@ -35,13 +39,119 @@ export default function ChatPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const didSendFirstMessage = useRef(false);
+  const autoScrollEnabled = useRef(true);
+  const forceScrollToBottom = useRef(true);
+  const lastScrollTop = useRef(0);
+  const lastTouchY = useRef<number | null>(null);
+  const lastManualScrollAt = useRef(0);
 
-  // Auto-scroll to bottom on new messages
+  function disableAutoScroll() {
+    autoScrollEnabled.current = false;
+    lastManualScrollAt.current = performance.now();
+  }
+
   useEffect(() => {
-    if (messageListRef.current) {
-      messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
+    const el = messageListRef.current;
+    if (!el) {
+      return;
     }
-  }, [session?.messages]);
+
+    lastScrollTop.current = el.scrollTop;
+
+    function handleScroll() {
+      const currentScrollTop = el.scrollTop;
+      const isScrollingUp = currentScrollTop < lastScrollTop.current;
+
+      if (isScrollingUp) {
+        disableAutoScroll();
+      }
+
+      lastScrollTop.current = currentScrollTop;
+    }
+
+    function handleWheel(event: WheelEvent) {
+      if (event.deltaY < 0) {
+        disableAutoScroll();
+      }
+    }
+
+    function handleTouchStart(event: TouchEvent) {
+      lastTouchY.current = event.touches[0]?.clientY ?? null;
+    }
+
+    function handleTouchMove(event: TouchEvent) {
+      const currentTouchY = event.touches[0]?.clientY;
+      if (
+        typeof currentTouchY === 'number' &&
+        typeof lastTouchY.current === 'number' &&
+        currentTouchY > lastTouchY.current
+      ) {
+        disableAutoScroll();
+      }
+
+      lastTouchY.current = currentTouchY ?? null;
+    }
+
+    function handleTouchEnd() {
+      lastTouchY.current = null;
+    }
+
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    el.addEventListener('wheel', handleWheel, { passive: true });
+    el.addEventListener('touchstart', handleTouchStart, { passive: true });
+    el.addEventListener('touchmove', handleTouchMove, { passive: true });
+    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('scroll', handleScroll);
+      el.removeEventListener('wheel', handleWheel);
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = messageListRef.current;
+    if (!el || !autoScrollEnabled.current) {
+      if (!el || !forceScrollToBottom.current) {
+        return;
+      }
+    }
+
+    const currentDistanceFromBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight;
+    const recentlyScrolledByUser =
+      performance.now() - lastManualScrollAt.current < manualScrollDebounceMs;
+    const shouldFollow =
+      forceScrollToBottom.current ||
+      (autoScrollEnabled.current &&
+        !recentlyScrolledByUser &&
+        currentDistanceFromBottom <= autoScrollGuardThreshold);
+
+    if (!shouldFollow) {
+      return;
+    }
+
+    el.scrollTop = el.scrollHeight;
+    lastScrollTop.current = el.scrollTop;
+    forceScrollToBottom.current = false;
+  }, [
+    autoScrollGuardThreshold,
+    isLoading,
+    manualScrollDebounceMs,
+    searchQuery,
+    searchResults,
+    session?.messages,
+  ]);
+
+  useEffect(() => {
+    autoScrollEnabled.current = true;
+    forceScrollToBottom.current = true;
+    lastScrollTop.current = 0;
+    lastTouchY.current = null;
+    lastManualScrollAt.current = 0;
+  }, [sessionId]);
 
   // 如果从首页带了 firstMessage 参数，自动发送第一条消息
   useEffect(() => {
@@ -98,6 +208,9 @@ export default function ChatPage() {
   }
 
   async function handleSubmit(payload: ComposerSubmission, model: string) {
+    autoScrollEnabled.current = true;
+    forceScrollToBottom.current = true;
+    lastManualScrollAt.current = 0;
     if (editingIndex !== null) {
       const saved = await editMessage(editingIndex, payload, model);
       if (saved) {
@@ -118,12 +231,22 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div ref={messageListRef} className="flex-1 overflow-y-auto">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div
+        ref={messageListRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
+      >
         <MessageList
           messages={session.messages}
           isLoading={isLoading}
-          onRetry={(index) => retryMessage(index, selectedModel)}
+          searchQuery={searchQuery}
+          searchResults={searchResults}
+          onRetry={(index) => {
+            autoScrollEnabled.current = true;
+            forceScrollToBottom.current = true;
+            lastManualScrollAt.current = 0;
+            return retryMessage(index, selectedModel);
+          }}
           onEdit={handleEdit}
           editingMessageId={
             editingIndex !== null ? session.messages[editingIndex]?.id ?? null : null
@@ -141,6 +264,7 @@ export default function ChatPage() {
         draftSeed={draftSeed}
         mode={editingIndex !== null ? 'edit' : 'compose'}
         onCancelEdit={handleCancelEdit}
+        sticky={false}
       />
     </div>
   );

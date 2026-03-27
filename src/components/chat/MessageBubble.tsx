@@ -7,7 +7,8 @@ import Image from 'next/image';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
-import { DocumentIcon, ImageIcon } from '@/components/icons';
+import { DocumentIcon, ImageIcon, SearchIcon, ChevronDownIcon } from '@/components/icons';
+import type { SearchResultItem } from './MessageList';
 import { getStoredAttachmentDataUrl } from '@/lib/attachment-store';
 import {
   AttachmentRefBlock,
@@ -25,7 +26,59 @@ interface MessageBubbleProps {
   onEdit?: () => void;
   showThinkingIndicator?: boolean;
   showAssistantMarker?: boolean;
+  searchQuery?: string | null;
+  searchResults?: SearchResultItem[] | null;
   isEditing?: boolean;
+}
+
+function getDomain(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+function SearchSourcesPanel({ results }: { results: SearchResultItem[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="mb-3">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 text-xs text-text-400 hover:text-text-200 transition-colors"
+      >
+        <SearchIcon className="h-3.5 w-3.5" />
+        <span>Searched · {results.length} sources</span>
+        <ChevronDownIcon
+          className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {expanded && (
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {results.map((r, i) => (
+            <a
+              key={i}
+              href={r.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-lg border border-border-300/10 bg-bg-200 px-3 py-2.5 text-xs transition-colors hover:bg-bg-300"
+            >
+              <div className="mb-1 font-medium text-text-100 line-clamp-1">
+                {r.title}
+              </div>
+              <div className="text-text-400 line-clamp-2 leading-relaxed">
+                {r.content}
+              </div>
+              <div className="mt-1.5 text-[10px] text-text-500 truncate">
+                {getDomain(r.url)}
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 type MarkdownCodeProps = ComponentPropsWithoutRef<'code'> & {
@@ -280,6 +333,8 @@ export default function MessageBubble({
   onEdit,
   showThinkingIndicator = false,
   showAssistantMarker = false,
+  searchQuery,
+  searchResults,
   isEditing = false,
 }: MessageBubbleProps) {
   if (message.role === 'user') {
@@ -287,9 +342,24 @@ export default function MessageBubble({
   }
 
   const assistantText = getMessageText(message);
+  const isSearching = !!searchQuery && showThinkingIndicator && !assistantText;
+  const hasResults = !!searchResults && searchResults.length > 0;
 
   return (
     <div className="group mb-8">
+      {isSearching && (
+        <div className="mb-3 flex items-center gap-1.5 text-xs text-text-400 animate-pulse">
+          <SearchIcon className="h-3.5 w-3.5" />
+          <span>Searching...</span>
+        </div>
+      )}
+      {!isSearching && hasResults && <SearchSourcesPanel results={searchResults} />}
+      {!isSearching && searchQuery && !hasResults && (
+        <div className="mb-3 flex items-center gap-1.5 text-xs text-text-400">
+          <SearchIcon className="h-3.5 w-3.5" />
+          <span>Searched</span>
+        </div>
+      )}
       <div
         className="text-text-100 text-[0.9375rem] leading-[1.65rem]"
         style={{ fontFamily: 'Georgia, \"Times New Roman\", serif' }}
