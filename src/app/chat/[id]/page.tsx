@@ -60,11 +60,12 @@ export default function ChatPage() {
     if (!el) {
       return;
     }
+    const scrollElement: HTMLDivElement = el;
 
-    lastScrollTop.current = el.scrollTop;
+    lastScrollTop.current = scrollElement.scrollTop;
 
     function handleScroll() {
-      const currentScrollTop = el.scrollTop;
+      const currentScrollTop = scrollElement.scrollTop;
       const isScrollingUp = currentScrollTop < lastScrollTop.current;
 
       if (isScrollingUp) {
@@ -101,18 +102,18 @@ export default function ChatPage() {
       lastTouchY.current = null;
     }
 
-    el.addEventListener('scroll', handleScroll, { passive: true });
-    el.addEventListener('wheel', handleWheel, { passive: true });
-    el.addEventListener('touchstart', handleTouchStart, { passive: true });
-    el.addEventListener('touchmove', handleTouchMove, { passive: true });
-    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+    scrollElement.addEventListener('scroll', handleScroll, { passive: true });
+    scrollElement.addEventListener('wheel', handleWheel, { passive: true });
+    scrollElement.addEventListener('touchstart', handleTouchStart, { passive: true });
+    scrollElement.addEventListener('touchmove', handleTouchMove, { passive: true });
+    scrollElement.addEventListener('touchend', handleTouchEnd, { passive: true });
 
     return () => {
-      el.removeEventListener('scroll', handleScroll);
-      el.removeEventListener('wheel', handleWheel);
-      el.removeEventListener('touchstart', handleTouchStart);
-      el.removeEventListener('touchmove', handleTouchMove);
-      el.removeEventListener('touchend', handleTouchEnd);
+      scrollElement.removeEventListener('scroll', handleScroll);
+      scrollElement.removeEventListener('wheel', handleWheel);
+      scrollElement.removeEventListener('touchstart', handleTouchStart);
+      scrollElement.removeEventListener('touchmove', handleTouchMove);
+      scrollElement.removeEventListener('touchend', handleTouchEnd);
     };
   }, [hasSession, sessionId]);
 
