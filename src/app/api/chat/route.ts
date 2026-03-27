@@ -1,4 +1,5 @@
 import { getApiKeyForUser } from '@/lib/auth';
+import { getClaudeSystemPrompt } from '@/lib/claude-system-prompts';
 import { getUserFromRequest } from '@/lib/jwt';
 import { searchWeb, formatSearchResults } from '@/lib/search';
 
@@ -91,6 +92,7 @@ export async function POST(req: Request) {
     const apiBody = {
       model,
       messages,
+      system: getClaudeSystemPrompt(model),
       max_tokens: 8192,
       temperature: 1,
     };
