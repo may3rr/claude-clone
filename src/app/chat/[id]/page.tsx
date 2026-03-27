@@ -39,6 +39,7 @@ export default function ChatPage() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const didSendFirstMessage = useRef(false);
+  const hasSession = Boolean(session);
   const autoScrollEnabled = useRef(true);
   const forceScrollToBottom = useRef(true);
   const lastScrollTop = useRef(0);
@@ -51,7 +52,14 @@ export default function ChatPage() {
   }
 
   useEffect(() => {
-    const el = messageListRef.current!;
+    if (!hasSession) {
+      return;
+    }
+
+    const el = messageListRef.current;
+    if (!el) {
+      return;
+    }
 
     lastScrollTop.current = el.scrollTop;
 
@@ -106,7 +114,7 @@ export default function ChatPage() {
       el.removeEventListener('touchmove', handleTouchMove);
       el.removeEventListener('touchend', handleTouchEnd);
     };
-  }, []);
+  }, [hasSession, sessionId]);
 
   useEffect(() => {
     const el = messageListRef.current;
