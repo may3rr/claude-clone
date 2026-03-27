@@ -51,10 +51,7 @@ export default function ChatPage() {
   }
 
   useEffect(() => {
-    const el = messageListRef.current;
-    if (!el) {
-      return;
-    }
+    const el = messageListRef.current!;
 
     lastScrollTop.current = el.scrollTop;
 
