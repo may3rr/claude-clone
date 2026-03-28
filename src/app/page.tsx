@@ -8,6 +8,7 @@ import { createNewSession, saveSession } from '@/lib/chat-storage';
 import { createUserMessageFromComposer } from '@/lib/chat-message-utils';
 import { ComposerSubmission } from '@/lib/chat-types';
 import { setPendingChatMessage } from '@/lib/pending-chat';
+import { getStoredAuthState, subscribeAuthState } from '@/lib/auth-events';
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
@@ -25,12 +26,19 @@ export default function HomePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const user = localStorage.getItem('user');
-    if (!user) {
-      router.push('/login');
-    } else {
+    function syncAuthState() {
+      const { shortname } = getStoredAuthState();
+      if (!shortname) {
+        setAuthed(false);
+        router.push('/login');
+        return;
+      }
+
       setAuthed(true);
     }
+
+    syncAuthState();
+    return subscribeAuthState(syncAuthState);
   }, [router]);
 
   async function handleNewChat(payload: ComposerSubmission, model: string) {

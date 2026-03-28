@@ -14,6 +14,7 @@ interface SaveSessionOptions {
 
 let cachedSessions: ChatSession[] = [];
 let cacheLoaded = false;
+let cacheSyncVersion = 0;
 const syncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function notifySessionsUpdated() {
@@ -39,6 +40,13 @@ function clearPendingSync(sessionId: string) {
     clearTimeout(pending);
     syncTimers.delete(sessionId);
   }
+}
+
+function clearAllPendingSyncs() {
+  syncTimers.forEach((pending) => {
+    clearTimeout(pending);
+  });
+  syncTimers.clear();
 }
 
 function syncSessionTitleToServer(id: string, title: string) {
@@ -136,72 +144,72 @@ export async function loadSessionFromServer(id: string): Promise<ChatSession | n
 // Initialize cache from server, fallback to localStorage
 export async function initSessionsCache() {
   if (cacheLoaded) return;
+  const requestVersion = cacheSyncVersion;
   const sessions = await loadSessionsFromServer();
 
-  if (sessions.length > 0) {
-    cachedSessions = sessions;
-  } else if (typeof window !== 'undefined') {
-    // Fallback: load from localStorage if server returned nothing
-    const raw = localStorage.getItem('chat_sessions');
-    cachedSessions = normalizeSessions(raw);
+  if (requestVersion !== cacheSyncVersion) {
+    return;
   }
+
+  cachedSessions = sessions;
 
   cacheLoaded = true;
   notifySessionsUpdated();
 }
 
-// Also try migrating from localStorage on first load
+// Also try migrating from user-scoped localStorage on first load
 export async function migrateLocalStorageToServer() {
   if (typeof window === 'undefined') return;
-  const raw = localStorage.getItem('chat_sessions');
-  if (!raw) return;
-
-  const localSessions = normalizeSessions(raw);
-  if (localSessions.length === 0) return;
-
-  // Check if we're actually authenticated first
   try {
     const authCheck = await fetch('/api/auth/me');
     if (!authCheck.ok) {
-      // Not authenticated — keep localStorage intact, load from it
-      cachedSessions = localSessions;
-      cacheLoaded = true;
-      notifySessionsUpdated();
       return;
     }
+
+    const authState = await authCheck.json() as { shortname?: string };
+    const shortname =
+      typeof authState.shortname === 'string'
+        ? authState.shortname.trim().toLowerCase()
+        : '';
+    if (!shortname) {
+      return;
+    }
+
+    const raw = localStorage.getItem(`chat_sessions:${shortname}`);
+    if (!raw) {
+      return;
+    }
+
+    const localSessions = normalizeSessions(raw);
+    if (localSessions.length === 0) {
+      localStorage.removeItem(`chat_sessions:${shortname}`);
+      return;
+    }
+
+    // Upload each local session to server, track success
+    let allSucceeded = true;
+    for (const session of localSessions) {
+      try {
+        const res = await fetch(`/api/sessions/${session.id}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: session.messages,
+            title: session.title,
+          }),
+        });
+        if (!res.ok) allSucceeded = false;
+      } catch {
+        allSucceeded = false;
+      }
+    }
+
+    if (allSucceeded) {
+      localStorage.removeItem(`chat_sessions:${shortname}`);
+    }
   } catch {
-    cachedSessions = localSessions;
-    cacheLoaded = true;
-    notifySessionsUpdated();
     return;
   }
-
-  // Upload each local session to server, track success
-  let allSucceeded = true;
-  for (const session of localSessions) {
-    try {
-      const res = await fetch(`/api/sessions/${session.id}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: session.messages,
-          title: session.title,
-        }),
-      });
-      if (!res.ok) allSucceeded = false;
-    } catch {
-      allSucceeded = false;
-    }
-  }
-
-  // Only clear localStorage if ALL uploads succeeded
-  if (allSucceeded) {
-    localStorage.removeItem('chat_sessions');
-  }
-
-  // Refresh cache
-  cacheLoaded = false;
-  await initSessionsCache();
 }
 
 // --- Public API (same interface as before) ---
@@ -223,6 +231,33 @@ export function getAllSessions(): ChatSession[] {
 
 export function getSession(id: string): ChatSession | null {
   return cachedSessions.find(s => s.id === id) || null;
+}
+
+export function clearSessionsCache() {
+  cacheSyncVersion += 1;
+  clearAllPendingSyncs();
+  cachedSessions = [];
+  cacheLoaded = false;
+  notifySessionsUpdated();
+}
+
+export async function refreshSessionsCache() {
+  const requestVersion = cacheSyncVersion + 1;
+  cacheSyncVersion = requestVersion;
+  clearAllPendingSyncs();
+  cachedSessions = [];
+  cacheLoaded = false;
+  notifySessionsUpdated();
+
+  const sessions = await loadSessionsFromServer();
+  if (requestVersion !== cacheSyncVersion) {
+    return;
+  }
+
+  cachedSessions = sessions;
+
+  cacheLoaded = true;
+  notifySessionsUpdated();
 }
 
 export function saveSession(

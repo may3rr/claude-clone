@@ -4,7 +4,12 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { MenuIcon } from '@/components/icons';
 import Sidebar from '@/components/sidebar/Sidebar';
-import { migrateLocalStorageToServer, initSessionsCache } from '@/lib/chat-storage';
+import {
+  clearSessionsCache,
+  migrateLocalStorageToServer,
+  refreshSessionsCache,
+} from '@/lib/chat-storage';
+import { getStoredAuthState, subscribeAuthState } from '@/lib/auth-events';
 
 const SIDEBAR_STATE_KEY = 'claude_sidebar_collapsed';
 const EXPANDED_SIDEBAR_WIDTH = 288;
@@ -27,15 +32,37 @@ export default function AppShell({
 
   // Initialize sessions from server (or localStorage fallback)
   useEffect(() => {
-    const user = localStorage.getItem('user');
-    if (!user) return;
+    let cancelled = false;
+    let authSyncVersion = 0;
 
-    async function init() {
+    async function syncSessionsForAuth() {
+      const runId = authSyncVersion + 1;
+      authSyncVersion = runId;
+      const { shortname } = getStoredAuthState();
+      if (!shortname) {
+        clearSessionsCache();
+        return;
+      }
+
       await migrateLocalStorageToServer();
-      await initSessionsCache();
+
+      if (cancelled || runId !== authSyncVersion) {
+        return;
+      }
+
+      await refreshSessionsCache();
     }
 
-    void init();
+    void syncSessionsForAuth();
+
+    const unsubscribe = subscribeAuthState(() => {
+      void syncSessionsForAuth();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {

@@ -7,21 +7,17 @@ import {
   requestBillingRefresh,
   subscribeBillingRefresh,
 } from '@/lib/billing-events';
+import {
+  clearStoredAuthState,
+  getStoredAuthState,
+  subscribeAuthState,
+} from '@/lib/auth-events';
 
 const BILLING_REFRESH_THROTTLE_MS = 90_000;
 const FOCUS_REFRESH_INTERVAL_MS = 5 * 60_000;
 
 function formatCny(value: number) {
   return `¥${Math.max(value, 0).toFixed(2)}`;
-}
-
-function readStoredUserValue(key: string) {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const value = localStorage.getItem(key)?.trim();
-  return value ? value : null;
 }
 
 export default function SidebarUserPanel({ collapsed = false }: { collapsed?: boolean }) {
@@ -46,8 +42,14 @@ export default function SidebarUserPanel({ collapsed = false }: { collapsed?: bo
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setUserShortname(readStoredUserValue('user'));
-    setDisplayName(readStoredUserValue('user_display_name'));
+    function syncStoredUser() {
+      const authState = getStoredAuthState();
+      setUserShortname(authState.shortname);
+      setDisplayName(authState.displayName);
+    }
+
+    syncStoredUser();
+    return subscribeAuthState(syncStoredUser);
   }, [pathname]);
 
   // Close menu on outside click
@@ -133,9 +135,7 @@ export default function SidebarUserPanel({ collapsed = false }: { collapsed?: bo
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
-    localStorage.removeItem('user');
-    localStorage.removeItem('user_display_name');
-    localStorage.removeItem('user_role');
+    clearStoredAuthState();
     setUserShortname(null);
     setDisplayName(null);
     setSummary(null);

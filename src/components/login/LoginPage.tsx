@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { saveStoredAuthState } from '@/lib/auth-events';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -42,10 +43,11 @@ export default function LoginPage() {
         return;
       }
 
-      // Store user info in localStorage for client-side display
-      localStorage.setItem('user', data.shortname);
-      localStorage.setItem('user_display_name', data.displayName);
-      localStorage.setItem('user_role', data.role);
+      saveStoredAuthState({
+        shortname: data.shortname,
+        displayName: data.displayName,
+        role: data.role,
+      });
       router.push('/');
     } catch {
       setError('网络错误，请稍后重试');

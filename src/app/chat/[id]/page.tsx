@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useChat } from '@/hooks/useChat';
 import MessageList from '@/components/chat/MessageList';
@@ -12,11 +12,13 @@ import {
 } from '@/lib/chat-types';
 import { buildComposerSubmissionFromMessage } from '@/lib/chat-message-utils';
 import { takePendingChatMessage } from '@/lib/pending-chat';
+import { getStoredAuthState, subscribeAuthState } from '@/lib/auth-events';
 
 export default function ChatPage() {
   const autoScrollGuardThreshold = 160;
   const manualScrollDebounceMs = 250;
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const sessionId = params.id as string;
   const {
@@ -37,6 +39,7 @@ export default function ChatPage() {
     submission: ComposerSubmission;
   } | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [authed, setAuthed] = useState(() => Boolean(getStoredAuthState().shortname));
   const messageListRef = useRef<HTMLDivElement>(null);
   const didSendFirstMessage = useRef(false);
   const hasSession = Boolean(session);
@@ -159,6 +162,22 @@ export default function ChatPage() {
     lastManualScrollAt.current = 0;
   }, [sessionId]);
 
+  useEffect(() => {
+    function syncAuthState() {
+      const { shortname } = getStoredAuthState();
+      if (!shortname) {
+        setAuthed(false);
+        router.push('/login');
+        return;
+      }
+
+      setAuthed(true);
+    }
+
+    syncAuthState();
+    return subscribeAuthState(syncAuthState);
+  }, [router]);
+
   // 如果从首页带了 firstMessage 参数，自动发送第一条消息
   useEffect(() => {
     if (!session || didSendFirstMessage.current) return;
@@ -228,7 +247,7 @@ export default function ChatPage() {
     return sendMessage(payload, model);
   }
 
-  if (!session) {
+  if (!authed || !session) {
     return (
       <div className="flex items-center justify-center h-full text-text-400 text-sm">
         Loading…
