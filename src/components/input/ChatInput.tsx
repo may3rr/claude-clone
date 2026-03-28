@@ -28,7 +28,12 @@ const ACCEPTED_FILE_TYPES = [
   'image/gif',
 ];
 const MAX_ATTACHMENT_COUNT = 8;
-const MAX_TOTAL_ATTACHMENT_BYTES = 18 * 1024 * 1024;
+const MAX_FUNCTION_BODY_BYTES = 4.5 * 1024 * 1024;
+const BASE64_EXPANSION_RATIO = 4 / 3;
+const JSON_BODY_HEADROOM_BYTES = 512 * 1024;
+const MAX_TOTAL_ATTACHMENT_BYTES = Math.floor(
+  (MAX_FUNCTION_BODY_BYTES - JSON_BODY_HEADROOM_BYTES) / BASE64_EXPANSION_RATIO
+);
 
 interface ChatInputProps {
   onSubmit?: (payload: ComposerSubmission, model: string) => Promise<boolean> | boolean;
@@ -208,7 +213,7 @@ export default function ChatInput({
       if (nextTotalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
         cleanupRejectedAttachments(
           nextAttachments,
-          `附件总大小不能超过 ${formatFileSize(MAX_TOTAL_ATTACHMENT_BYTES)}`
+          `附件总大小不能超过 ${formatFileSize(MAX_TOTAL_ATTACHMENT_BYTES)}，否则服务器会拒绝处理`
         );
         return;
       }

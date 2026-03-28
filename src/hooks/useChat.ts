@@ -192,6 +192,27 @@ export function useChat({ sessionId }: UseChatOptions) {
     });
   }
 
+  async function buildApiError(response: Response) {
+    if (response.status === 413) {
+      return '附件太大。当前部署环境会把附件转成 base64 再随请求发送，请将附件总大小控制在 3 MB 内后重试。';
+    }
+
+    const errorText = (await response.text()).trim();
+    if (!errorText) {
+      return `API error: ${response.status}`;
+    }
+
+    if (errorText.startsWith('Internal Error:')) {
+      return errorText;
+    }
+
+    if (errorText.startsWith('API Error:')) {
+      return errorText;
+    }
+
+    return `API error: ${response.status}`;
+  }
+
   async function streamAssistantReply(
     baseSession: ChatSession,
     baseMessages: ChatMessage[],
@@ -204,7 +225,7 @@ export function useChat({ sessionId }: UseChatOptions) {
 
     const response = await requestChat(baseMessages, model, true, controller.signal);
     if (!response.ok) {
-      throw new Error(`API error: ${response.status}`);
+      throw new Error(await buildApiError(response));
     }
 
     let assistantContent = '';

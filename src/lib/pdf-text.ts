@@ -1,25 +1,60 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { PDFParse } from 'pdf-parse';
 
 const MAX_PDF_PAGES = 40;
 const MAX_PDF_CHARACTERS = 80_000;
+let pdfParseModulePromise: Promise<typeof import('pdf-parse')> | null = null;
 
-PDFParse.setWorker(
-  pathToFileURL(
-    path.join(
-      process.cwd(),
-      'node_modules',
-      'pdf-parse',
-      'dist',
-      'pdf-parse',
-      'cjs',
-      'pdf.worker.mjs'
-    )
-  ).toString()
-);
+async function ensurePdfGeometryGlobals() {
+  const pdfGlobals = globalThis as Record<string, unknown>;
+
+  if (
+    pdfGlobals['DOMMatrix'] &&
+    pdfGlobals['DOMPoint'] &&
+    pdfGlobals['DOMRect']
+  ) {
+    return;
+  }
+
+  const geometry = await import('@napi-rs/canvas');
+
+  pdfGlobals['DOMMatrix'] ??= geometry.DOMMatrix as unknown;
+  pdfGlobals['DOMPoint'] ??= geometry.DOMPoint as unknown;
+  pdfGlobals['DOMRect'] ??= geometry.DOMRect as unknown;
+}
+
+async function loadPdfParse() {
+  if (!pdfParseModulePromise) {
+    pdfParseModulePromise = (async () => {
+      await ensurePdfGeometryGlobals();
+      const pdfParseModule = await import('pdf-parse');
+
+      pdfParseModule.PDFParse.setWorker(
+        pathToFileURL(
+          path.join(
+            process.cwd(),
+            'node_modules',
+            'pdf-parse',
+            'dist',
+            'pdf-parse',
+            'cjs',
+            'pdf.worker.mjs'
+          )
+        ).toString()
+      );
+
+      return pdfParseModule;
+    })().catch((error) => {
+      pdfParseModulePromise = null;
+      throw error;
+    });
+  }
+
+  return pdfParseModulePromise;
+}
 
 export async function extractPdfTextFromBase64(base64Data: string) {
+  const { PDFParse } = await loadPdfParse();
   const bytes = Buffer.from(base64Data, 'base64');
   const parser = new PDFParse({ data: bytes });
 
