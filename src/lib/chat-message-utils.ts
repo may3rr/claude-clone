@@ -114,6 +114,11 @@ async function hydrateBlock(block: ChatContentBlock): Promise<ClaudeRequestBlock
 
   return {
     type: attachment.attachmentType,
+    ...(attachment.attachmentType === 'document'
+      ? {
+          title: attachment.name,
+        }
+      : {}),
     source: {
       type: 'base64',
       media_type: attachment.mediaType,

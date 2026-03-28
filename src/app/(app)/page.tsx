@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import WelcomeHero from '@/components/welcome/WelcomeHero';
 import ChatInput from '@/components/input/ChatInput';
@@ -8,7 +8,6 @@ import { createNewSession, saveSession } from '@/lib/chat-storage';
 import { createUserMessageFromComposer } from '@/lib/chat-message-utils';
 import { ComposerSubmission } from '@/lib/chat-types';
 import { setPendingChatMessage } from '@/lib/pending-chat';
-import { getStoredAuthState, subscribeAuthState } from '@/lib/auth-events';
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
@@ -21,25 +20,8 @@ function getErrorMessage(error: unknown) {
 export default function HomePage() {
   const router = useRouter();
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-6');
-  const [authed, setAuthed] = useState(false);
   const [isStartingChat, setIsStartingChat] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    function syncAuthState() {
-      const { shortname } = getStoredAuthState();
-      if (!shortname) {
-        setAuthed(false);
-        router.push('/login');
-        return;
-      }
-
-      setAuthed(true);
-    }
-
-    syncAuthState();
-    return subscribeAuthState(syncAuthState);
-  }, [router]);
 
   async function handleNewChat(payload: ComposerSubmission, model: string) {
     setErrorMessage(null);
@@ -62,19 +44,17 @@ export default function HomePage() {
 
   return (
     <div className="flex flex-col h-full">
-      {authed && (
-        <>
-          <WelcomeHero />
-          <ChatInput
-            onSubmit={handleNewChat}
-            isLoading={isStartingChat}
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
-            errorMessage={errorMessage}
-            onClearError={() => setErrorMessage(null)}
-          />
-        </>
-      )}
+      <>
+        <WelcomeHero />
+        <ChatInput
+          onSubmit={handleNewChat}
+          isLoading={isStartingChat}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          errorMessage={errorMessage}
+          onClearError={() => setErrorMessage(null)}
+        />
+      </>
     </div>
   );
 }

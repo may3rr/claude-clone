@@ -12,7 +12,6 @@ import {
 } from '@/lib/chat-types';
 import { buildComposerSubmissionFromMessage } from '@/lib/chat-message-utils';
 import { takePendingChatMessage } from '@/lib/pending-chat';
-import { getStoredAuthState, subscribeAuthState } from '@/lib/auth-events';
 
 export default function ChatPage() {
   const autoScrollGuardThreshold = 160;
@@ -23,6 +22,7 @@ export default function ChatPage() {
   const sessionId = params.id as string;
   const {
     session,
+    isSessionPending,
     isLoading,
     errorMessage,
     searchQuery,
@@ -39,7 +39,6 @@ export default function ChatPage() {
     submission: ComposerSubmission;
   } | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [authed, setAuthed] = useState(() => Boolean(getStoredAuthState().shortname));
   const messageListRef = useRef<HTMLDivElement>(null);
   const didSendFirstMessage = useRef(false);
   const hasSession = Boolean(session);
@@ -163,20 +162,12 @@ export default function ChatPage() {
   }, [sessionId]);
 
   useEffect(() => {
-    function syncAuthState() {
-      const { shortname } = getStoredAuthState();
-      if (!shortname) {
-        setAuthed(false);
-        router.push('/login');
-        return;
-      }
-
-      setAuthed(true);
+    if (isSessionPending || session) {
+      return;
     }
 
-    syncAuthState();
-    return subscribeAuthState(syncAuthState);
-  }, [router]);
+    router.replace('/');
+  }, [isSessionPending, router, session]);
 
   // 如果从首页带了 firstMessage 参数，自动发送第一条消息
   useEffect(() => {
@@ -247,7 +238,7 @@ export default function ChatPage() {
     return sendMessage(payload, model);
   }
 
-  if (!authed || !session) {
+  if (isSessionPending || !session) {
     return (
       <div className="flex items-center justify-center h-full text-text-400 text-sm">
         Loading…

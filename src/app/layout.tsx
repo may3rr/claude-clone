@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { EB_Garamond, Noto_Serif_SC } from 'next/font/google';
 import './globals.css';
-import AppShell from '@/components/layout/AppShell';
 import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 
@@ -31,9 +30,7 @@ export default function RootLayout({
   return (
     <html data-theme="claude" data-mode="light" lang="zh-CN" className={`h-full antialiased ${ebGaramond.variable} ${notoSerifSC.variable}`}>
       <body className="h-full">
-        <AppShell>
-          {children}
-        </AppShell>
+        {children}
         <Analytics />
         <SpeedInsights />
       </body>

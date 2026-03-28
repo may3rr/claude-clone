@@ -79,6 +79,7 @@ function extractChunkText(data: unknown) {
 
 export function useChat({ sessionId }: UseChatOptions) {
   const [session, setSession] = useState<ChatSession | null>(null);
+  const [isSessionPending, setIsSessionPending] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string | null>(null);
@@ -89,26 +90,44 @@ export function useChat({ sessionId }: UseChatOptions) {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     // Try local cache first — set immediately to avoid "Loading…" flash
     const cached = getSession(sessionId);
     if (cached) {
       sessionRef.current = cached;
       setSession(cached);
+    } else {
+      sessionRef.current = null;
+      setSession(null);
     }
 
     if (cached && cached.messages.length > 0) {
       // Has messages locally — no need to hit server
+      setIsSessionPending(false);
       return;
     }
 
+    setIsSessionPending(true);
+
     // Load from server (new session or messages not in cache yet)
     void loadSessionFromServer(sessionId).then((serverSession) => {
+      if (cancelled) {
+        return;
+      }
+
       if (serverSession) {
         sessionRef.current = serverSession;
         setSession(serverSession);
         saveSession(serverSession, { sync: 'none' });
       }
+
+      setIsSessionPending(false);
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [sessionId]);
 
   useEffect(() => {
@@ -491,6 +510,7 @@ export function useChat({ sessionId }: UseChatOptions) {
 
   return {
     session,
+    isSessionPending,
     isLoading,
     errorMessage,
     searchQuery,

@@ -1,6 +1,11 @@
 import { getApiKeyForUser } from '@/lib/auth';
 import { getClaudeSystemPrompt } from '@/lib/claude-system-prompts';
+import {
+  ClaudeRequestBlock,
+  ClaudeRequestMessage,
+} from '@/lib/chat-types';
 import { getUserFromRequest } from '@/lib/jwt';
+import { extractPdfTextFromBase64 } from '@/lib/pdf-text';
 import { searchWeb, formatSearchResults } from '@/lib/search';
 
 const WEB_SEARCH_TOOL = {
@@ -42,6 +47,77 @@ function getConfiguredApiUrl() {
   return apiUrl;
 }
 
+function isPdfDocumentBlock(
+  block: ClaudeRequestBlock
+): block is Extract<ClaudeRequestBlock, { type: 'document' }> {
+  return block.type === 'document' && block.source.media_type === 'application/pdf';
+}
+
+async function expandPdfDocumentBlock(
+  block: Extract<ClaudeRequestBlock, { type: 'document' }>
+): Promise<ClaudeRequestBlock[]> {
+  const fallbackTitle = block.title?.trim() || 'uploaded.pdf';
+
+  try {
+    const extracted = await extractPdfTextFromBase64(block.source.data);
+    const headerLines = [
+      `PDF attachment: ${fallbackTitle}`,
+      `Total pages: ${extracted.pageCount}`,
+    ];
+
+    if (!extracted.text) {
+      return [
+        {
+          type: 'text',
+          text: `${headerLines.join('\n')}\nNo readable PDF text could be extracted.`,
+        },
+      ];
+    }
+
+    const trailer = extracted.truncated
+      ? '\n\n[PDF text truncated before sending to the upstream model.]'
+      : '';
+
+    return [
+      {
+        type: 'text',
+        text: `${headerLines.join('\n')}\n\n${extracted.text}${trailer}`,
+      },
+    ];
+  } catch (error) {
+    console.error('[API] PDF extraction failed:', error);
+    return [
+      {
+        type: 'text',
+        text: `PDF attachment: ${fallbackTitle}\nPDF text extraction failed before the upstream request.`,
+      },
+    ];
+  }
+}
+
+async function prepareMessagesForUpstream(
+  messages: ClaudeRequestMessage[]
+): Promise<ClaudeRequestMessage[]> {
+  return Promise.all(
+    messages.map(async (message) => {
+      const content = await Promise.all(
+        message.content.map(async (block) => {
+          if (!isPdfDocumentBlock(block)) {
+            return [block];
+          }
+
+          return expandPdfDocumentBlock(block);
+        })
+      );
+
+      return {
+        ...message,
+        content: content.flat(),
+      };
+    })
+  );
+}
+
 /** Parse an SSE stream into individual JSON events. */
 async function* parseSSE(
   body: ReadableStream<Uint8Array>
@@ -81,6 +157,7 @@ export async function POST(req: Request) {
 
     const { messages, model, stream = true } = await req.json();
     const userShortname = jwtUser.shortname;
+    const upstreamMessages = await prepareMessagesForUpstream(messages);
 
     const apiKey = getApiKeyForUser(userShortname);
     if (!apiKey) {
@@ -99,7 +176,7 @@ export async function POST(req: Request) {
 
     const apiBody = {
       model,
-      messages,
+      messages: upstreamMessages,
       system: getClaudeSystemPrompt(model),
       max_tokens: 8192,
       temperature: 1,
@@ -234,7 +311,7 @@ export async function POST(req: Request) {
             });
 
             const messagesWithResult = [
-              ...messages,
+              ...upstreamMessages,
               { role: 'assistant', content: assistantContent },
               {
                 role: 'user',

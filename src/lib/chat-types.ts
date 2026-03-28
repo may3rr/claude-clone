@@ -48,6 +48,7 @@ export interface ClaudeImageBlock {
 
 export interface ClaudeDocumentBlock {
   type: 'document';
+  title?: string;
   source: ClaudeBase64Source;
 }
 

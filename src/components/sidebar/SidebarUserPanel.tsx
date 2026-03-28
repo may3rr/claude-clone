@@ -140,7 +140,7 @@ export default function SidebarUserPanel({ collapsed = false }: { collapsed?: bo
     setDisplayName(null);
     setSummary(null);
     requestBillingRefresh(true);
-    router.push('/login');
+    router.replace('/login');
     router.refresh();
   }
 

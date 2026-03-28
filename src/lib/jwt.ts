@@ -6,7 +6,7 @@ export interface JwtPayload {
   role: string;
 }
 
-const COOKIE_NAME = 'auth_token';
+export const COOKIE_NAME = 'auth_token';
 const EXPIRATION = '30d';
 
 function getSecret() {
