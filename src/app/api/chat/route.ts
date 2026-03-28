@@ -34,6 +34,14 @@ interface SSEEvent {
   };
 }
 
+function getConfiguredApiUrl() {
+  const apiUrl = process.env.GPT_GE_API_URL;
+  if (!apiUrl) {
+    throw new Error('GPT_GE_API_URL not set');
+  }
+  return apiUrl;
+}
+
 /** Parse an SSE stream into individual JSON events. */
 async function* parseSSE(
   body: ReadableStream<Uint8Array>
@@ -99,7 +107,7 @@ export async function POST(req: Request) {
 
     // Non-streaming path is used by title generation, so don't expose web search.
     if (!stream) {
-      const response = await fetch(process.env.GPT_GE_API_URL!, {
+      const response = await fetch(getConfiguredApiUrl(), {
         method: 'POST',
         headers,
         body: JSON.stringify({ ...apiBody, stream: false }),
@@ -117,7 +125,7 @@ export async function POST(req: Request) {
     }
 
     // Streaming path — pipe through, intercept tool_use on the fly
-    const response = await fetch(process.env.GPT_GE_API_URL!, {
+    const response = await fetch(getConfiguredApiUrl(), {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -241,7 +249,7 @@ export async function POST(req: Request) {
             ];
 
             // Second streaming call with search results
-            const finalResponse = await fetch(process.env.GPT_GE_API_URL!, {
+            const finalResponse = await fetch(getConfiguredApiUrl(), {
               method: 'POST',
               headers,
               body: JSON.stringify({

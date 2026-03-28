@@ -17,6 +17,7 @@ import {
 import {
   getSession,
   saveSession,
+  saveSessionTitle,
   loadSessionFromServer,
 } from '@/lib/chat-storage';
 import {
@@ -29,6 +30,8 @@ import {
 interface UseChatOptions {
   sessionId: string;
 }
+
+type PersistSessionOptions = Parameters<typeof saveSession>[1];
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
@@ -83,6 +86,7 @@ export function useChat({ sessionId }: UseChatOptions) {
     Array<{ title: string; url: string; content: string }> | null
   >(null);
   const sessionRef = useRef<ChatSession | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     // Try local cache first — set immediately to avoid "Loading…" flash
@@ -102,7 +106,7 @@ export function useChat({ sessionId }: UseChatOptions) {
       if (serverSession) {
         sessionRef.current = serverSession;
         setSession(serverSession);
-        saveSession(serverSession);
+        saveSession(serverSession, { sync: 'none' });
       }
     });
   }, [sessionId]);
@@ -111,12 +115,21 @@ export function useChat({ sessionId }: UseChatOptions) {
     sessionRef.current = session;
   }, [session]);
 
-  function persistSession(nextSession: ChatSession) {
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  function persistSession(
+    nextSession: ChatSession,
+    options?: PersistSessionOptions
+  ) {
     sessionRef.current = nextSession;
     startTransition(() => {
       setSession(nextSession);
     });
-    saveSession(nextSession);
+    saveSession(nextSession, options);
   }
 
   function clearError() {
@@ -144,7 +157,8 @@ export function useChat({ sessionId }: UseChatOptions) {
   async function requestChat(
     messages: ChatMessage[],
     model: string,
-    stream: boolean
+    stream: boolean,
+    signal?: AbortSignal
   ) {
     const hydratedMessages = await hydrateMessagesForApi(messages);
     return fetch('/api/chat', {
@@ -155,15 +169,21 @@ export function useChat({ sessionId }: UseChatOptions) {
         model,
         stream,
       }),
+      signal,
     });
   }
 
   async function streamAssistantReply(
     baseSession: ChatSession,
     baseMessages: ChatMessage[],
-    model: string
+    model: string,
+    replace = false
   ) {
-    const response = await requestChat(baseMessages, model, true);
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const response = await requestChat(baseMessages, model, true, controller.signal);
     if (!response.ok) {
       throw new Error(`API error: ${response.status}`);
     }
@@ -177,6 +197,7 @@ export function useChat({ sessionId }: UseChatOptions) {
 
     const decoder = new TextDecoder();
     let buffer = '';
+    let latestDraftSession: ChatSession | null = null;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -218,14 +239,25 @@ export function useChat({ sessionId }: UseChatOptions) {
         }
       }
 
-      persistSession(
-        buildAssistantDraft(
-          baseSession,
-          baseMessages,
-          assistantMessageId,
-          assistantContent
-        )
+      latestDraftSession = buildAssistantDraft(
+        baseSession,
+        baseMessages,
+        assistantMessageId,
+        assistantContent
       );
+      persistSession(latestDraftSession, { sync: 'none' });
+    }
+
+    if (latestDraftSession) {
+      const latestSession =
+        getSession(sessionId) ?? sessionRef.current ?? latestDraftSession;
+      persistSession({
+        ...latestSession,
+        messages: latestDraftSession.messages,
+      }, {
+        sync: 'immediate',
+        replace,
+      });
     }
   }
 
@@ -266,7 +298,8 @@ export function useChat({ sessionId }: UseChatOptions) {
 
         const latestSession =
           getSession(currentSession.id) ?? sessionRef.current ?? currentSession;
-        persistSession({ ...latestSession, title });
+        persistSession({ ...latestSession, title }, { sync: 'none' });
+        saveSessionTitle(currentSession.id, title);
         requestBillingRefresh();
       }
     } catch (error) {
@@ -288,7 +321,7 @@ export function useChat({ sessionId }: UseChatOptions) {
       messages: [...baseSession.messages, message],
     };
 
-    persistSession(updatedSession);
+    persistSession(updatedSession, { sync: 'immediate' });
     setIsLoading(true);
 
     if (baseSession.messages.length === 0) {
@@ -296,11 +329,16 @@ export function useChat({ sessionId }: UseChatOptions) {
     }
 
     try {
-      await streamAssistantReply(updatedSession, updatedSession.messages, model);
+      await streamAssistantReply(
+        updatedSession,
+        updatedSession.messages,
+        model
+      );
       requestBillingRefresh();
     } catch (error) {
       console.error('Chat error:', error);
       setErrorMessage(getErrorMessage(error));
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -348,16 +386,25 @@ export function useChat({ sessionId }: UseChatOptions) {
     const discardedAttachmentIds = getAttachmentIdsFromMessages(
       sessionRef.current.messages.slice(assistantIndex + 1)
     );
-    persistSession(trimmedSession);
+    persistSession(trimmedSession, {
+      sync: 'immediate',
+      replace: true,
+    });
     void deleteAttachments(discardedAttachmentIds);
     setIsLoading(true);
 
     try {
-      await streamAssistantReply(trimmedSession, messagesBeforeRetry, model);
+      await streamAssistantReply(
+        trimmedSession,
+        messagesBeforeRetry,
+        model,
+        true
+      );
       requestBillingRefresh();
     } catch (error) {
       console.error('Retry error:', error);
       setErrorMessage(getErrorMessage(error));
+      return false;
     } finally {
       setIsLoading(false);
     }
@@ -405,7 +452,10 @@ export function useChat({ sessionId }: UseChatOptions) {
         messages: nextMessages,
       };
 
-      persistSession(trimmedSession);
+      persistSession(trimmedSession, {
+        sync: 'immediate',
+        replace: true,
+      });
       await deleteAttachments([
         ...new Set([...removedAttachmentIds, ...discardedAttachmentIds]),
       ]);
@@ -416,11 +466,17 @@ export function useChat({ sessionId }: UseChatOptions) {
       }
 
       try {
-        await streamAssistantReply(trimmedSession, nextMessages, model);
+        await streamAssistantReply(
+          trimmedSession,
+          nextMessages,
+          model,
+          true
+        );
         requestBillingRefresh();
       } catch (error) {
         console.error('Edit resend error:', error);
         setErrorMessage(getErrorMessage(error));
+        return false;
       } finally {
         setIsLoading(false);
       }

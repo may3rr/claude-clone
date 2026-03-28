@@ -51,10 +51,20 @@ export async function PUT(
   const { title } = await req.json();
 
   const sql = getDb();
-  await sql`
-    UPDATE sessions SET title = ${title}, updated_at = now()
-    WHERE id = ${id} AND user_shortname = ${user.shortname}
+  const rows = await sql`
+    INSERT INTO sessions (id, user_shortname, title)
+    VALUES (${id}, ${user.shortname}, ${title || 'New chat'})
+    ON CONFLICT (id) DO UPDATE
+    SET
+      title = ${title},
+      updated_at = now()
+    WHERE sessions.user_shortname = ${user.shortname}
+    RETURNING id
   `;
+
+  if (rows.length === 0) {
+    return Response.json({ error: 'Session not found' }, { status: 404 });
+  }
 
   return Response.json({ ok: true });
 }

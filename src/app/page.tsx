@@ -40,7 +40,7 @@ export default function HomePage() {
 
     try {
       const message = await createUserMessageFromComposer(session.id, payload);
-      saveSession(session);
+      saveSession(session, { sync: 'immediate' });
       setPendingChatMessage(session.id, { model, message });
       router.push(`/chat/${session.id}`);
       return true;

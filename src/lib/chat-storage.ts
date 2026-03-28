@@ -3,26 +3,100 @@ import { ChatSession, normalizeSessions } from '@/lib/chat-types';
 
 export type { ChatSession } from '@/lib/chat-types';
 
+type SessionSyncMode = 'none' | 'debounced' | 'immediate';
+
+interface SaveSessionOptions {
+  sync?: SessionSyncMode;
+  replace?: boolean;
+}
+
 // --- Local cache backed by the server ---
 
 let cachedSessions: ChatSession[] = [];
 let cacheLoaded = false;
+const syncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function notifySessionsUpdated() {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event('chat-sessions-updated'));
 }
 
-// Sync session to server (fire-and-forget)
-function syncSessionToServer(session: ChatSession) {
+function updateCachedSession(session: ChatSession) {
+  const idx = cachedSessions.findIndex((s) => s.id === session.id);
+
+  if (idx >= 0) {
+    cachedSessions = cachedSessions.map((s, i) => (i === idx ? session : s));
+  } else {
+    cachedSessions = [session, ...cachedSessions];
+  }
+
+  notifySessionsUpdated();
+}
+
+function clearPendingSync(sessionId: string) {
+  const pending = syncTimers.get(sessionId);
+  if (pending) {
+    clearTimeout(pending);
+    syncTimers.delete(sessionId);
+  }
+}
+
+function syncSessionTitleToServer(id: string, title: string) {
+  void fetch(`/api/sessions/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  }).catch((err) => console.error('[sync] rename failed:', err));
+}
+
+function writeSessionToServer(session: ChatSession, replace = false) {
+  if (!replace && session.messages.length === 0) {
+    void fetch('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: session.id,
+        title: session.title,
+      }),
+    }).catch((err) => console.error('[sync] create failed:', err));
+    return;
+  }
+
+  const method = replace ? 'PUT' : 'POST';
+
   void fetch(`/api/sessions/${session.id}/messages`, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       messages: session.messages,
       title: session.title,
     }),
   }).catch((err) => console.error('[sync] save failed:', err));
+}
+
+// Sync session to server (fire-and-forget)
+function syncSessionToServer(
+  session: ChatSession,
+  { sync = 'debounced', replace = false }: SaveSessionOptions = {}
+) {
+  clearPendingSync(session.id);
+
+  if (sync === 'none') {
+    return;
+  }
+
+  if (sync === 'immediate') {
+    writeSessionToServer(session, replace);
+    return;
+  }
+
+  syncTimers.set(
+    session.id,
+    setTimeout(() => {
+      syncTimers.delete(session.id);
+      writeSessionToServer(session, replace);
+    }, 500)
+  );
 }
 
 // Load sessions from server
@@ -151,20 +225,16 @@ export function getSession(id: string): ChatSession | null {
   return cachedSessions.find(s => s.id === id) || null;
 }
 
-export function saveSession(session: ChatSession) {
-  const idx = cachedSessions.findIndex(s => s.id === session.id);
-
-  if (idx >= 0) {
-    cachedSessions = cachedSessions.map((s, i) => (i === idx ? session : s));
-  } else {
-    cachedSessions = [session, ...cachedSessions];
-  }
-
-  notifySessionsUpdated();
-  syncSessionToServer(session);
+export function saveSession(
+  session: ChatSession,
+  options: SaveSessionOptions = {}
+) {
+  updateCachedSession(session);
+  syncSessionToServer(session, options);
 }
 
 export function deleteSession(id: string) {
+  clearPendingSync(id);
   cachedSessions = cachedSessions.filter(s => s.id !== id);
   notifySessionsUpdated();
   void deleteAttachmentsForSession(id);
@@ -181,14 +251,12 @@ export function renameSession(id: string, title: string) {
       s.id === id ? { ...s, title } : s
     );
     notifySessionsUpdated();
-
-    // Sync rename to server
-    void fetch(`/api/sessions/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title }),
-    }).catch((err) => console.error('[sync] rename failed:', err));
+    syncSessionTitleToServer(id, title);
   }
+}
+
+export function saveSessionTitle(id: string, title: string) {
+  syncSessionTitleToServer(id, title);
 }
 
 export function createNewSession(): ChatSession {
