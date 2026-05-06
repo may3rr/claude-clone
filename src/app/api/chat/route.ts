@@ -11,7 +11,7 @@ import { searchWeb, formatSearchResults } from '@/lib/search';
 const WEB_SEARCH_TOOL = {
   name: 'web_search',
   description:
-    'Search the web for current, up-to-date information. Use this when the question requires recent news, current events, live data, real-time prices, or anything that might have changed recently and you are not confident in your knowledge.',
+    'Search the web for current, up-to-date information. ONLY use this tool when: (1) the user explicitly asks you to search or look something up, OR (2) the question is about very recent events, breaking news, live data, or real-time prices that you genuinely do not know. Do NOT use for general knowledge, greetings, casual chat, coding help, writing, math, explanations, or anything you already know.',
   input_schema: {
     type: 'object',
     properties: {
