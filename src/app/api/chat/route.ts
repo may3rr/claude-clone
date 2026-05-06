@@ -1,23 +1,6 @@
 import { getApiKeyForUser } from '@/lib/auth';
 import { getClaudeSystemPrompt } from '@/lib/claude-system-prompts';
 import { getUserFromRequest } from '@/lib/jwt';
-import { searchWeb, formatSearchResults } from '@/lib/search';
-
-const WEB_SEARCH_TOOL = {
-  name: 'web_search',
-  description:
-    'Search the web for current, up-to-date information. Use this when the question requires recent news, current events, live data, real-time prices, or anything that might have changed recently and you are not confident in your knowledge.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      query: {
-        type: 'string',
-        description: 'The search query to look up',
-      },
-    },
-    required: ['query'],
-  },
-};
 
 interface SSEEvent {
   type?: string;
@@ -116,13 +99,12 @@ export async function POST(req: Request) {
       return Response.json(await response.json());
     }
 
-    // Streaming path — pipe through, intercept tool_use on the fly
+    // Streaming path — pipe through directly
     const response = await fetch(process.env.GPT_GE_API_URL!, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         ...apiBody,
-        tools: [WEB_SEARCH_TOOL],
         stream: true,
       }),
     });
@@ -146,138 +128,20 @@ export async function POST(req: Request) {
     const outputStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          // State for tracking tool use
-          let stopReason = '';
-          let toolUseId = '';
-          let toolInputJson = '';
-          let collectedText = '';
-          let currentBlockType = '';
-
-          // Parse the first stream
           for await (const event of parseSSE(response.body!)) {
+            // Only forward text deltas, skip any tool_use blocks
             if (event.type === 'content_block_start') {
-              currentBlockType = event.content_block?.type ?? '';
-              if (currentBlockType === 'tool_use') {
-                toolUseId = event.content_block?.id ?? '';
-              }
+              controller.enqueue(emit(event));
             } else if (event.type === 'content_block_delta') {
-              if (
-                currentBlockType === 'text' &&
-                event.delta?.type === 'text_delta'
-              ) {
-                // Forward text deltas to client immediately
+              if (event.delta?.type === 'text_delta') {
                 controller.enqueue(emit(event));
-                collectedText += event.delta.text ?? '';
-              } else if (
-                currentBlockType === 'tool_use' &&
-                event.delta?.type === 'input_json_delta'
-              ) {
-                // Buffer tool input
-                toolInputJson += event.delta.partial_json ?? '';
               }
             } else if (event.type === 'content_block_stop') {
-              currentBlockType = '';
+              controller.enqueue(emit(event));
+            } else if (event.type === 'message_start') {
+              controller.enqueue(emit(event));
             } else if (event.type === 'message_delta') {
-              stopReason = event.delta?.stop_reason ?? '';
-            }
-          }
-
-          // If Claude decided to use the search tool
-          if (stopReason === 'tool_use' && toolUseId) {
-            let parsedInput: { query?: string };
-            try {
-              parsedInput = JSON.parse(toolInputJson || '{}');
-            } catch {
-              parsedInput = {};
-            }
-            const query = parsedInput.query ?? '';
-
-            console.log(`[API] Web search triggered: "${query}"`);
-
-            // Notify client that search is happening
-            controller.enqueue(emit({ type: 'search_used', query }));
-
-            // Execute Tavily search
-            const searchData = await searchWeb(query);
-            const searchText = formatSearchResults(searchData);
-
-            // Send search results to client for display
-            controller.enqueue(
-              emit({
-                type: 'search_results',
-                results: searchData.results.map((r) => ({
-                  title: r.title,
-                  url: r.url,
-                  content: r.content,
-                })),
-              })
-            );
-
-            // Build the full assistant content for the second call
-            const assistantContent: object[] = [];
-            if (collectedText) {
-              assistantContent.push({ type: 'text', text: collectedText });
-            }
-            assistantContent.push({
-              type: 'tool_use',
-              id: toolUseId,
-              name: 'web_search',
-              input: parsedInput,
-            });
-
-            const messagesWithResult = [
-              ...messages,
-              { role: 'assistant', content: assistantContent },
-              {
-                role: 'user',
-                content: [
-                  {
-                    type: 'tool_result',
-                    tool_use_id: toolUseId,
-                    content: searchText,
-                  },
-                ],
-              },
-            ];
-
-            // Second streaming call with search results
-            const finalResponse = await fetch(process.env.GPT_GE_API_URL!, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({
-                model,
-                messages: messagesWithResult,
-                tools: [WEB_SEARCH_TOOL],
-                max_tokens: 8192,
-                temperature: 1,
-                stream: true,
-              }),
-            });
-
-            if (!finalResponse.ok) {
-              const errorText = await finalResponse.text();
-              console.error(
-                `[API] gpt.ge error (step 2): ${finalResponse.status}`,
-                errorText
-              );
-              controller.close();
-              return;
-            }
-
-            // Pipe the second stream through, forwarding only text deltas
-            let block2Type = '';
-            for await (const event2 of parseSSE(finalResponse.body!)) {
-              if (event2.type === 'content_block_start') {
-                block2Type = event2.content_block?.type ?? '';
-              } else if (
-                event2.type === 'content_block_delta' &&
-                block2Type === 'text' &&
-                event2.delta?.type === 'text_delta'
-              ) {
-                controller.enqueue(emit(event2));
-              } else if (event2.type === 'content_block_stop') {
-                block2Type = '';
-              }
+              controller.enqueue(emit(event));
             }
           }
 
@@ -286,7 +150,7 @@ export async function POST(req: Request) {
         } catch (err) {
           console.error('[API] Stream processing error:', err);
           const errMsg =
-            err instanceof Error ? err.message : '搜索服务异常，请稍后重试';
+            err instanceof Error ? err.message : '服务异常，请稍后重试';
           controller.enqueue(
             emit({
               type: 'content_block_delta',
